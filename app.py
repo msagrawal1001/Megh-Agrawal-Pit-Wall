@@ -10,13 +10,10 @@ import fastf1.api as api
 from datetime import datetime, timedelta
 import pandas as pd
 import logging
-<<<<<<< HEAD
 import requests
 import re
 from html import unescape
 from xml.etree import ElementTree as ET
-=======
->>>>>>> 26cb9bb7191e875b52a207c6f1d7e5ce62b751eb
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
