@@ -810,6 +810,13 @@ body {
   text-transform: uppercase;
   margin-top: 3px;
 }
+.driver-gain {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #1f9d55;
+  font-weight: 700;
+  margin-top: 2px;
+}
 
 .con-row {
   padding: 15px 24px;
@@ -890,6 +897,49 @@ body {
 .pod-driver-name { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1; }
 .pod-driver-team { font-size: 10px; color: var(--ink-3); margin-top: 3px; }
 .pod-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-2); font-weight: 500; }
+.weekend-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule-light);
+}
+.weekend-list-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.weekend-row:last-child { border-bottom: none; }
+.weekend-pos {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.weekend-meta { line-height: 1.2; }
+.weekend-driver { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 500; color: var(--ink); }
+.weekend-team { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+.weekend-gap { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-2); font-weight: 500; }
+.weekend-empty {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--ink-3);
+  border: 1px dashed var(--rule-light);
+}
+.weekend-list-scroll::-webkit-scrollbar { width: 6px; }
+.weekend-list-scroll::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.25); }
+.weekend-full-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--rule-light);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
 
 .news-block { padding: 0; }
 .news-item {
@@ -1031,6 +1081,115 @@ body {
   .driver-pts { font-size: 17px; }
   .cal-flag-name { font-size: 15px; }
 }
+
+/* Modal Styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  animation: fadeSlow 0.3s ease both;
+}
+
+.modal-content {
+  background-color: var(--paper);
+  margin: 5% auto;
+  padding: 20px;
+  border: 1px solid var(--rule-light);
+  width: 90%;
+  max-width: 800px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  animation: fadeUpSlow 0.4s ease both;
+}
+
+.modal-close {
+  color: var(--ink-2);
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: var(--ink);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-family: 'Inter', sans-serif;
+}
+
+.results-table th, .results-table td {
+  padding: 12px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--rule-light);
+}
+
+.results-table th {
+  background-color: var(--paper-2);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+.results-table .pos {
+  font-weight: bold;
+  width: 50px;
+}
+
+.results-table .driver {
+  font-weight: 500;
+}
+
+.results-table .driver-name {
+  font-size: 16px;
+}
+
+.results-table .driver-code {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+
+.results-table .team {
+  color: var(--ink-2);
+}
+
+.results-table .time, .results-table .gap {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+}
+
+.results-table .points {
+  font-weight: bold;
+  color: var(--gold);
+}
+
+.weekend-full-btn {
+  background: var(--racing);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: background 0.2s ease;
+}
+
+.weekend-full-btn:hover {
+  background: var(--racing-hot);
+}
 </style>
 </head>
 <body>
@@ -1075,7 +1234,7 @@ body {
   </div>
 
   <div class="hero-sub">
-    <span class="live-badge">Live · Fast-F1 Data</span>
+    <span class="live-badge">Live · Data</span>
     <span>Drivers · Constructors · Paddock · Calendar</span>
   </div>
 </section>
@@ -1161,6 +1320,13 @@ body {
         <div class="col-num">§ 03</div>
         <div class="col-name">Paddock <em>Intel</em></div>
         <div class="col-sub">Last Race · Top Stories</div>
+      </div>
+
+      <div class="podium-block" id="weekendGridBlock">
+        <div class="podium-head" id="weekendGridHead">Current Weekend Grid <button class="weekend-full-btn" id="showFullBtn">Show Full Classification</button></div>
+        <div class="podium-list weekend-list-scroll" id="weekendGridList">
+          <!-- Current weekend session grid loaded dynamically -->
+        </div>
       </div>
 
       <div class="podium-block" id="podiumBlock">
@@ -1321,7 +1487,8 @@ async function fetchFallbackData() {
     number: s.Driver?.permanentNumber || '',
     team: s.Constructors?.[0]?.constructorId || '',
     team_name: s.Constructors?.[0]?.name || '',
-    nationality: s.Driver?.nationality || ''
+    nationality: s.Driver?.nationality || '',
+    points_gained: 0
   }));
 
   // Fetch constructor standings
@@ -1392,6 +1559,7 @@ async function fetchFallbackData() {
     race_results: raceResults.slice(0, 3),
     last_race: lastRace,
     schedule: schedule,
+    current_weekend_grid: null,
     news: [
       { category: 'The Story', headline: 'Championship battle intensifies', summary: 'The fight for the 2026 championship is heating up.' },
       { category: 'Technical', headline: 'New regulations deliver', summary: '2026 rules creating closer racing.' },
@@ -1402,12 +1570,14 @@ async function fetchFallbackData() {
 
 // Update dashboard with fetched data
 function updateDashboard(data) {
-  const { next_race, countdown, driver_standings, constructor_standings, race_results, last_race, schedule, news } = data;
+  const { next_race, countdown, driver_standings, constructor_standings, race_results, last_race, schedule, news, current_weekend_grid } = data;
 
   // Clear dynamic containers before each re-render to prevent duplicate appends
   const driversCol = document.getElementById('driversCol');
   const constructorsCol = document.getElementById('constructorsCol');
   const podiumList = document.getElementById('podiumList');
+  const weekendGridList = document.getElementById('weekendGridList');
+  const weekendGridHead = document.getElementById('weekendGridHead');
   const newsBlock = document.getElementById('newsBlock');
   const calStrip = document.getElementById('calStrip');
 
@@ -1417,6 +1587,7 @@ function updateDashboard(data) {
   driversCol.innerHTML = driversHead;
   constructorsCol.innerHTML = constructorsHead;
   podiumList.innerHTML = '';
+  weekendGridList.innerHTML = '';
   newsBlock.innerHTML = '';
   calStrip.innerHTML = '';
 
@@ -1468,6 +1639,7 @@ function updateDashboard(data) {
       </div>
       <div class="driver-pts-wrap">
         <div class="driver-pts">${driver.points}</div>
+        ${driver.points_gained > 0 ? `<div class="driver-gain">+${driver.points_gained}</div>` : ''}
         <div class="driver-pts-sub">pts</div>
       </div>
       ${isFav ? '<span class="fav-star">★</span>' : ''}
@@ -1506,6 +1678,28 @@ function updateDashboard(data) {
     `;
     consCol.appendChild(row);
   });
+
+  // Update current weekend grid
+  if (current_weekend_grid && current_weekend_grid.classification?.length) {
+    weekendGridHead.textContent = `${current_weekend_grid.event_name} · ${current_weekend_grid.session_name}`;
+    current_weekend_grid.classification.forEach((entry) => {
+      const row = document.createElement('div');
+      const posLabel = Number.isFinite(entry.position) ? `P${String(entry.position).padStart(2, '0')}` : 'P--';
+      row.className = 'weekend-row';
+      row.innerHTML = `
+        <div class="weekend-pos">${posLabel}</div>
+        <div class="weekend-meta">
+          <div class="weekend-driver">${entry.first_name ? entry.first_name.charAt(0) + '. ' : ''}${entry.last_name || entry.driver_code}</div>
+          <div class="weekend-team">${entry.team_name || ''}</div>
+        </div>
+        <div class="weekend-gap">${entry.result_text || entry.gap || entry.time || entry.status || ''}</div>
+      `;
+      weekendGridList.appendChild(row);
+    });
+  } else {
+    weekendGridHead.textContent = 'Current Weekend Grid';
+    weekendGridList.innerHTML = '<div class="weekend-empty">No completed session yet for the active race weekend.</div>';
+  }
 
   // Update podium
   if (race_results && race_results.length > 0) {
@@ -1638,7 +1832,85 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchDashboardData();
   // Auto-refresh roughly every 78 hours
   setInterval(fetchDashboardData, 78 * 60 * 60 * 1000);
+
+  // Full classification modal
+  const showFullBtn = document.getElementById('showFullBtn');
+  const modal = document.getElementById('fullModal');
+  const closeBtn = document.querySelector('.modal-close');
+
+  showFullBtn.addEventListener('click', async () => {
+    try {
+      const response = await fetch('/api/full_results');
+      const result = await response.json();
+      if (result.success) {
+        populateModal(result.data);
+        modal.style.display = 'block';
+      } else {
+        alert('No full results available');
+      }
+    } catch (e) {
+      console.error('Error fetching full results:', e);
+      alert('Error loading full results');
+    }
+  });
+
+  closeBtn.addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+
+  window.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
 });
+
+function populateModal(data) {
+  const modalTitle = document.getElementById('modalTitle');
+  const modalTable = document.getElementById('modalTable').querySelector('tbody');
+
+  modalTitle.textContent = `${data.event_name} - ${data.session_name} Results`;
+  modalTable.innerHTML = '';
+
+  data.classification.forEach((driver, idx) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td class="pos">${driver.position}</td>
+      <td class="driver">
+        <div class="driver-name">${driver.first_name ? driver.first_name.charAt(0) + '. ' : ''}${driver.last_name}</div>
+        <div class="driver-code">${driver.driver_code}</div>
+      </td>
+      <td class="team">${driver.team_name}</td>
+      <td class="time">${driver.time || driver.result_text}</td>
+      <td class="gap">${driver.gap || ''}</td>
+      <td class="points">${driver.points || 0}</td>
+    `;
+    modalTable.appendChild(row);
+  });
+}
 </script>
+
+<!-- Full Classification Modal -->
+<div id="fullModal" class="modal">
+  <div class="modal-content">
+    <span class="modal-close">&times;</span>
+    <h2 id="modalTitle">Full Classification</h2>
+    <table id="modalTable" class="results-table">
+      <thead>
+        <tr>
+          <th>Pos</th>
+          <th>Driver</th>
+          <th>Team</th>
+          <th>Time</th>
+          <th>Gap</th>
+          <th>Pts</th>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 </body>
 </html>
