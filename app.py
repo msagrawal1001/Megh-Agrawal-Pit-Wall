@@ -15,7 +15,60 @@ import requests
 import re
 from html import unescape
 from xml.etree import ElementTree as ET
+# At the top of app.py, after imports
+from live_data_engine import live_engine
 
+# Start the engine on app initialization
+@app.before_request
+def startup():
+    if not live_engine.running:
+        live_engine.start()
+
+# Add these new routes
+
+@app.route('/api/live/positions', methods=['GET'])
+def get_live_positions():
+    """Polling endpoint for live driver positions"""
+    positions = live_engine.get_driver_screen_positions()
+    return jsonify({
+        'success': True,
+        'data': {
+            'positions': positions,
+            'track_bounds': {
+                'x_min': live_engine.x_min,
+                'x_max': live_engine.x_max,
+                'y_min': live_engine.y_min,
+                'y_max': live_engine.y_max,
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    })
+
+@app.route('/api/live/configure', methods=['POST'])
+def configure_canvas():
+    """
+    Configure canvas dimensions for coordinate transformation
+    POST body: {
+        "canvas_width": 1200,
+        "canvas_height": 800,
+        "left_margin": 340,
+        "right_margin": 260,
+        "circuit_rotation": 0.0
+    }
+    """
+    data = request.json or {}
+    
+    live_engine.set_canvas_dimensions(
+        canvas_width=data.get('canvas_width', 1200),
+        canvas_height=data.get('canvas_height', 800),
+        left_margin=data.get('left_margin', 0),
+        right_margin=data.get('right_margin', 0)
+    )
+    
+    if 'circuit_rotation' in data:
+        live_engine.set_circuit_rotation(data['circuit_rotation'])
+    
+    return jsonify({'success': True, 'message': 'Canvas configured'})
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -87,8 +140,7 @@ def get_current_season():
 def get_next_race():
     """Get information about the next race"""
     try:
-        # ---> FIX: Delete the (2026) part and just use the season variable! <---
-        season = 2026  # Explicitly lock to current target season
+        season = 2026
         schedule = fastf1.get_event_schedule(season)
         now = datetime.now()
 
@@ -208,7 +260,7 @@ def get_race_results(round_num=None):
         if not races:
             return None, []
 
-        race = races[-1]  # Get last race
+        race = races[-1]
         results = []
 
         for r in race.get('Results', []):
@@ -343,7 +395,6 @@ def _as_utc_datetime(value):
         value = value.to_pydatetime()
 
     if isinstance(value, datetime):
-        # FastF1 UTC columns are tz-aware; convert to UTC-naive.
         if value.tzinfo is not None:
             return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
@@ -487,18 +538,66 @@ def calculate_session_points(classification, session_name):
     return driver_points
 
 
+def _is_session_classification_official(results_df):
+    """
+    Verify that the session.results dataframe has official classification data.
+    Returns True only if:
+    1. At least one position column exists and has non-null values
+    2. At least 8 drivers are classified (minimum for official session)
+    3. All finisher entries have a valid Time or Status
+    """
+    if results_df is None or results_df.empty:
+        logger.warning("Results dataframe is None or empty")
+        return False
+    
+    # Check for official position columns
+    pos_col = None
+    for col in ['Position', 'ClassifiedPosition']:
+        if col in results_df.columns:
+            valid_positions = results_df[col].notna().sum()
+            if valid_positions >= 8:
+                pos_col = col
+                break
+    
+    if not pos_col:
+        logger.warning(f"No valid position column found. Available: {results_df.columns.tolist()}")
+        return False
+    
+    # Validate sequential positions
+    try:
+        positions = results_df[pos_col].dropna().astype(int).sort_values().unique()
+        if len(positions) < 8:
+            logger.warning(f"Only {len(positions)} drivers classified, need at least 8")
+            return False
+    except Exception as e:
+        logger.warning(f"Error validating positions: {e}")
+        return False
+    
+    # Check time/status fields
+    has_time = results_df['Time'].notna().sum() >= 8
+    has_status = results_df['Status'].notna().sum() >= 8
+    has_valid_finish = has_time or has_status
+    
+    if not has_valid_finish:
+        logger.warning("Insufficient Time or Status data for classification")
+        return False
+    
+    logger.info(f"✓ Classification VALIDATED: {len(positions)} drivers with official positions")
+    return True
+
+
 def get_current_weekend_session_classification():
     """
     Get the latest completed session classification for the currently active GP weekend.
     Returns session metadata and full classification (position, driver, time/gap).
     """
     try:
-        season = 2026  # Explicitly use 2026 season data for weekend session lookup
+        season = 2026
         schedule = fastf1.get_event_schedule(season)
         if schedule is None or schedule.empty:
             return None
 
-        now_utc = datetime.utcnow()
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         active_candidates = []
 
         for _, event in schedule.iterrows():
@@ -558,26 +657,23 @@ def get_current_weekend_session_classification():
                 session = fastf1.get_session(season, round_number, candidate["name"])
                 session.load(laps=False, telemetry=False, weather=False)
                 results = session.results
-                if results is not None and not results.empty:
-                    # 2. STOP FASTEST LAP SORTING: Check official classification columns
-                    pos_cols = ['Position', 'ClassifiedPosition', 'GridPosition']
-                    has_ordering = any(results[col].notna().any() for col in pos_cols if col in results.columns)
-                    if has_ordering:
-                        chosen_session_name = candidate["name"]
-                        chosen_session_dt = candidate["dt"]
-                        chosen_results = results.copy()
-                        break
-                    else:
-                        # 3. FASTF1 TIMING FALLBACK: Use provisional order from telemetry
-                        chosen_session_name = candidate["name"]
-                        chosen_session_dt = candidate["dt"]
-                        chosen_results = results.copy()
-                        break
+                
+                # NEW VALIDATION: Only accept if classification is truly official
+                if _is_session_classification_official(results):
+                    chosen_session_name = candidate["name"]
+                    chosen_session_dt = candidate["dt"]
+                    chosen_results = results.copy()
+                    logger.info(f"✓ ACCEPTED {candidate['name']} - official classification found")
+                    break
+                else:
+                    logger.info(f"✗ REJECTED {candidate['name']} - lacks official classification")
+                    continue
+                    
             except SessionNotAvailableError:
-                # 7. ERROR HANDLING: Session not available, skip to fallback
+                logger.info(f"SessionNotAvailableError for {candidate['name']}")
                 continue
             except Exception as e:
-                logger.info(f"Failed to load {candidate['name']}: {e}")
+                logger.error(f"Failed to load {candidate['name']}: {e}")
                 continue
 
         # 7. ERROR HANDLING: If race not available, fall back to most recent completed session
@@ -618,7 +714,6 @@ def get_current_weekend_session_classification():
             if not valid_results.empty:
                 chosen_results = valid_results.sort_values("PositionNum", na_position="last")
             else:
-                # Fallback to sorting
                 chosen_results["PositionNum"] = range(1, len(chosen_results) + 1)
         else:
             # 3. FASTF1 TIMING FALLBACK: No official positions, sort by fastest lap or driver number
@@ -750,9 +845,9 @@ def get_dashboard_data():
                     'date': next_race.get('EventDate', '2026-05-03') if has_next_race else '2026-05-03',
                 } if has_next_race else {},
                 'countdown': countdown,
-                'driver_standings': driver_standings[:10],  # Top 10
+                'driver_standings': driver_standings[:10],
                 'constructor_standings': constructor_standings,
-                'race_results': race_results[:3],  # Podium
+                'race_results': race_results[:3],
                 'last_race': last_race,
                 'schedule': schedule,
                 'news': news,
