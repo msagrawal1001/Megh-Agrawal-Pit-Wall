@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race Replay · F1 Pit Wall</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;0,800;1,400;1,700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --carbon: #0a0a0a;
+  --carbon-2: #131313;
+  --carbon-3: #1d1d1d;
+  --paper: #f2ece0;
+  --racing: #FF8000;
+  --racing-hot: #FF9520;
+  --gold: #d4a017;
+}
+
+body {
+  background: var(--carbon);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.header {
+  background: linear-gradient(135deg, var(--carbon-3) 0%, var(--carbon-2) 100%);
+  padding: 24px 36px;
+  border-bottom: 2px solid var(--racing);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-title .flag {
+  font-size: 24px;
+  animation: flagWave 3s ease-in-out infinite;
+}
+
+.session-info {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-align: right;
+  color: rgba(255,255,255,0.7);
+}
+
+.session-info .name {
+  color: var(--racing-hot);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 80px);
+}
+
+.canvas-container {
+  background: var(--carbon-2);
+  border: 1px solid var(--carbon-3);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-wrapper {
+  flex: 1;
+  position: relative;
+  background: linear-gradient(135deg, var(--carbon-2) 0%, var(--carbon-3) 100%);
+}
+
+canvas#trackCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--carbon);
+}
+
+.controls {
+  background: var(--carbon-3);
+  padding: 16px;
+  border-top: 1px solid var(--carbon-2);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.playback-btn {
+  background: var(--racing);
+  color: #000;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+
+.playback-btn:hover {
+  background: var(--racing-hot);
+}
+
+.playback-btn:active {
+  transform: scale(0.98);
+}
+
+.timeline-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeline-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+  width: 40px;
+  text-align: right;
+}
+
+.timeline {
+  flex: 1;
+  height: 6px;
+  background: var(--carbon-2);
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  border: 1px solid var(--carbon-3);
+}
+
+.timeline-progress {
+  height: 100%;
+  background: linear-gradient(90deg, var(--racing), var(--racing-hot));
+  border-radius: 3px;
+  position: relative;
+  width: 0%;
+  transition: width 0.05s linear;
+}
+
+.timeline-thumb {
+  position: absolute;
+  right: -6px;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  background: var(--racing-hot);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255, 128, 0, 0.4);
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-left: 1px solid var(--carbon-2);
+  padding-left: 16px;
+}
+
+.speed-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.6);
+}
+
+.speed-btn {
+  background: var(--carbon-2);
+  border: 1px solid var(--carbon-3);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 10px;
+  transition: all 0.2s;
+}
+
+.speed-btn:hover {
+  background: var(--carbon-3);
+  border-color: var(--racing);
+}
+
+.speed-btn.active {
+  background: var(--racing);
+  color: #000;
+  border-color: var(--racing);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drivers-list {
+  background: var(--carbon-2);
+  border: 1px solid var(--carbon-3);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.drivers-header {
+  background: var(--carbon-3);
+  padding: 12px;
+  border-bottom: 1px solid var(--carbon-3);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.6);
+  font-weight: 600;
+}
+
+.drivers-scroll {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.driver-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--carbon-3);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 12px;
+}
+
+.driver-row:hover {
+  background: var(--carbon-3);
+}
+
+.driver-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  min-width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.driver-info {
+  flex: 1;
+}
+
+.driver-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  display: block;
+}
+
+.driver-gap {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+}
+
+.info-panel {
+  background: var(--carbon-2);
+  border: 1px solid var(--carbon-3);
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.info-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--carbon-3);
+  color: var(--racing-hot);
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  color: rgba(255,255,255,0.6);
+}
+
+.info-value {
+  color: #fff;
+  font-weight: 600;
+}
+
+@keyframes flagWave {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(5deg); }
+}
+
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .sidebar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    grid-template-columns: 1fr;
+  }
+  
+  .controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .timeline-container {
+    width: 100%;
+  }
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(255,255,255,0.6);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.loading::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--racing);
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+  margin-left: 10px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="header-title">
+      <span class="flag">🏁</span>
+      <span>Race Replay</span>
+    </div>
+    <div class="session-info">
+      <div class="name" id="raceName">Loading...</div>
+      <div id="raceDetails">May 3, 2026</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div class="canvas-container">
+      <div class="canvas-wrapper">
+        <canvas id="trackCanvas"></canvas>
+      </div>
+      <div class="controls">
+        <button class="playback-btn" id="playBtn">▶ Play</button>
+        <div class="timeline-container">
+          <span class="timeline-label" id="timeDisplay">0:00</span>
+          <div class="timeline" id="timeline">
+            <div class="timeline-progress" id="timelineProgress"></div>
+            <div class="timeline-thumb"></div>
+          </div>
+          <span class="timeline-label" id="maxTimeDisplay">0:00</span>
+        </div>
+        <div class="speed-control">
+          <span class="speed-label">Speed</span>
+          <button class="speed-btn active" data-speed="0.5">0.5x</button>
+          <button class="speed-btn active" data-speed="1">1x</button>
+          <button class="speed-btn" data-speed="2">2x</button>
+          <button class="speed-btn" data-speed="4">4x</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="drivers-list">
+        <div class="drivers-header">Drivers</div>
+        <div class="drivers-scroll" id="driversList">
+          <div class="loading">Loading drivers...</div>
+        </div>
+      </div>
+
+      <div class="info-panel">
+        <div class="info-title">Session Info</div>
+        <div class="info-row">
+          <span class="info-label">Circuit</span>
+          <span class="info-value" id="infoCircuit">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Country</span>
+          <span class="info-value" id="infoCountry">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Type</span>
+          <span class="info-value" id="infoType">Race</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Duration</span>
+          <span class="info-value" id="infoDuration">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">FPS</span>
+          <span class="info-value" id="infoFPS">2</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+class RaceReplayViewer {
+  constructor() {
+    this.canvas = document.getElementById('trackCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.playBtn = document.getElementById('playBtn');
+    this.timeline = document.getElementById('timeline');
+    this.timelineProgress = document.getElementById('timelineProgress');
+    this.timeDisplay = document.getElementById('timeDisplay');
+    this.maxTimeDisplay = document.getElementById('maxTimeDisplay');
+    this.driversList = document.getElementById('driversList');
+    
+    this.raceData = null;
+    this.driversData = {};
+    this.currentTime = 0;
+    this.maxTime = 0;
+    this.isPlaying = false;
+    this.playbackSpeed = 1;
+    this.animationFrameId = null;
+    this.lastFrameTime = 0;
+    this.trackPoints = [];
+    this.currentPositions = {};
+    
+    this.setupCanvas();
+    this.loadRaceData();
+    this.attachEventListeners();
+  }
+
+  setupCanvas() {
+    const resizeCanvas = () => {
+      const rect = this.canvas.parentElement.getBoundingClientRect();
+      this.canvas.width = rect.width;
+      this.canvas.height = rect.height;
+      this.render();
+    };
+    
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+  }
+
+  attachEventListeners() {
+    this.playBtn.addEventListener('click', () => this.togglePlayback());
+    this.timeline.addEventListener('click', (e) => this.seek(e));
+    
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        this.playbackSpeed = parseFloat(e.target.dataset.speed);
+      });
+    });
+  }
+
+  async loadRaceData() {
+    try {
+      const response = await fetch('/api/replay/last-race');
+      const data = await response.json();
+      
+      if (!data.success) {
+        alert('No race data available');
+        return;
+      }
+
+      this.raceData = data;
+      this.maxTime = data.max_time;
+      
+      // Update UI
+      document.getElementById('raceName').textContent = data.session.name;
+      document.getElementById('raceDetails').textContent = `${data.session.circuit}, ${data.session.country}`;
+      document.getElementById('infoCircuit').textContent = data.session.circuit;
+      document.getElementById('infoCountry').textContent = data.session.country;
+      document.getElementById('infoType').textContent = data.session.session_type === 'Race' ? 'Race' : 'Sprint';
+      document.getElementById('infoDuration').textContent = this.formatTime(this.maxTime);
+      document.getElementById('infoFPS').textContent = data.fps;
+      document.getElementById('maxTimeDisplay').textContent = this.formatTime(this.maxTime);
+      
+      // Load driver telemetry
+      await this.loadAllDriverTelemetry();
+      
+      // Render initial track
+      this.renderTrackLine();
+      
+    } catch (error) {
+      console.error('Failed to load race data:', error);
+    }
+  }
+
+  async loadAllDriverTelemetry() {
+    const promises = Object.keys(this.raceData.drivers).map(driverNo => {
+      return fetch(`/api/replay/driver-telemetry/${driverNo}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            this.driversData[driverNo] = data.telemetry;
+          }
+        })
+        .catch(e => console.error(`Failed to load telemetry for driver ${driverNo}:`, e));
+    });
+    
+    await Promise.all(promises);
+    this.updateDriversList();
+  }
+
+  updateDriversList() {
+    let html = '';
+    
+    Object.entries(this.raceData.drivers).forEach(([driverNo, driverInfo]) => {
+      const color = driverInfo.color || '#FFFFFF';
+      html += `
+        <div class="driver-row" data-driver="${driverNo}">
+          <div class="driver-number" style="background: ${color}; color: ${color === '#FFFFFF' ? '#000' : '#fff'}">
+            ${driverNo}
+          </div>
+          <div class="driver-info">
+            <span class="driver-code">${driverInfo.code}</span>
+            <span class="driver-gap">Position: -</span>
+          </div>
+        </div>
+      `;
+    });
+    
+    this.driversList.innerHTML = html;
+  }
+
+  renderTrackLine() {
+    if (!this.raceData || !this.raceData.track_line) return;
+    
+    const points = this.raceData.track_line;
+    if (!points.x || points.x.length === 0) return;
+    
+    // Calculate bounds
+    const xs = points.x;
+    const ys = points.y;
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    
+    const padding = 40;
+    const scaleX = (this.canvas.width - 2 * padding) / (maxX - minX);
+    const scaleY = (this.canvas.height - 2 * padding) / (maxY - minY);
+    const scale = Math.min(scaleX, scaleY);
+    
+    const offsetX = padding - minX * scale;
+    const offsetY = padding - minY * scale;
+    
+    this.trackPoints = xs.map((x, i) => ({
+      x: x * scale + offsetX,
+      y: this.canvas.height - (ys[i] * scale + offsetY)
+    }));
+  }
+
+  updatePositions() {
+    const positions = {};
+    
+    Object.entries(this.driversData).forEach(([driverNo, telemetry]) => {
+      let closest = null;
+      let minDiff = Infinity;
+      
+      telemetry.forEach(point => {
+        const diff = Math.abs(point.t - this.currentTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = point;
+        }
+      });
+      
+      if (closest) {
+        positions[driverNo] = closest;
+      }
+    });
+    
+    this.currentPositions = positions;
+  }
+
+  render() {
+    this.ctx.fillStyle = '#0a0a0a';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // Draw track
+    if (this.trackPoints.length > 1) {
+      this.ctx.strokeStyle = '#333';
+      this.ctx.lineWidth = 16;
+      this.ctx.lineCap = 'round';
+      this.ctx.lineJoin = 'round';
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.trackPoints[0].x, this.trackPoints[0].y);
+      for (let i = 1; i < this.trackPoints.length; i++) {
+        this.ctx.lineTo(this.trackPoints[i].x, this.trackPoints[i].y);
+      }
+      this.ctx.stroke();
+      
+      this.ctx.strokeStyle = '#fff';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.trackPoints[0].x, this.trackPoints[0].y);
+      for (let i = 1; i < this.trackPoints.length; i++) {
+        this.ctx.lineTo(this.trackPoints[i].x, this.trackPoints[i].y);
+      }
+      this.ctx.stroke();
+    }
+    
+    // Draw drivers
+    if (this.raceData && this.raceData.track_line) {
+      const points = this.raceData.track_line;
+      const xs = points.x;
+      const ys = points.y;
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      
+      const padding = 40;
+      const scaleX = (this.canvas.width - 2 * padding) / (maxX - minX);
+      const scaleY = (this.canvas.height - 2 * padding) / (maxY - minY);
+      const scale = Math.min(scaleX, scaleY);
+      const offsetX = padding - minX * scale;
+      const offsetY = padding - minY * scale;
+      
+      Object.entries(this.currentPositions).forEach(([driverNo, pos]) => {
+        const driverInfo = this.raceData.drivers[driverNo];
+        if (!driverInfo) return;
+        
+        const screenX = pos.x * scale + offsetX;
+        const screenY = this.canvas.height - (pos.y * scale + offsetY);
+        
+        // Draw driver circle
+        this.ctx.fillStyle = driverInfo.color || '#FFFFFF';
+        this.ctx.beginPath();
+        this.ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Draw driver number
+        this.ctx.fillStyle = '#000';
+        this.ctx.font = 'bold 10px "JetBrains Mono"';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(driverNo, screenX, screenY);
+      });
+    }
+  }
+
+  animate(timestamp) {
+    if (!this.isPlaying) {
+      this.animationFrameId = requestAnimationFrame((t) => this.animate(t));
+      return;
+    }
+    
+    if (this.lastFrameTime === 0) {
+      this.lastFrameTime = timestamp;
+    }
+    
+    const deltaTime = (timestamp - this.lastFrameTime) / 1000;
+    this.lastFrameTime = timestamp;
+    
+    this.currentTime += deltaTime * this.playbackSpeed;
+    
+    if (this.currentTime >= this.maxTime) {
+      this.currentTime = this.maxTime;
+      this.isPlaying = false;
+      this.playBtn.textContent = '▶ Play';
+    }
+    
+    this.updatePositions();
+    this.updateUI();
+    this.render();
+    
+    this.animationFrameId = requestAnimationFrame((t) => this.animate(t));
+  }
+
+  updateUI() {
+    this.timeDisplay.textContent = this.formatTime(this.currentTime);
+    const progress = (this.currentTime / this.maxTime) * 100;
+    this.timelineProgress.style.width = progress + '%';
+  }
+
+  togglePlayback() {
+    this.isPlaying = !this.isPlaying;
+    this.playBtn.textContent = this.isPlaying ? '⏸ Pause' : '▶ Play';
+    
+    if (this.isPlaying) {
+      this.lastFrameTime = 0;
+      this.animate(0);
+    }
+  }
+
+  seek(e) {
+    const rect = this.timeline.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = Math.max(0, Math.min(1, x / rect.width));
+    this.currentTime = percent * this.maxTime;
+    this.updatePositions();
+    this.updateUI();
+    this.render();
+  }
+
+  formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+}
+
+// Initialize viewer when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  new RaceReplayViewer();
+});
+</script>
+
+</body>
+</html>

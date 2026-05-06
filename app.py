@@ -3,7 +3,8 @@ F1 Pit Wall Dashboard - Backend Server
 Uses Fast-F1 to fetch real Formula 1 data and serves it via REST API
 """
 
-from flask import Flask, jsonify, render_template, send_from_directory
+# === ALL IMPORTS FIRST ===
+from flask import Flask, jsonify, render_template, send_from_directory, request
 from flask_cors import CORS
 import fastf1
 import fastf1.api as api
@@ -15,47 +16,97 @@ import requests
 import re
 from html import unescape
 from xml.etree import ElementTree as ET
-# At the top of app.py, after imports
+import threading
+from queue import Queue
+
+# === LOGGING SETUP ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# === EXTERNAL MODULE IMPORTS ===
 from live_data_engine import live_engine
 
-# Start the engine on app initialization
+# === ENABLE CACHING ===
+fastf1.Cache.enable_cache('cache')
+
+# === CREATE FLASK APP ===
+app = Flask(__name__, static_folder='static', template_folder='templates')
+CORS(app)
+
+# === STARTUP HOOK (NOW app EXISTS!) ===
 @app.before_request
 def startup():
     if not live_engine.running:
         live_engine.start()
 
-# Add these new routes
-
+# === NEW ROUTES ===
 @app.route('/api/live/positions', methods=['GET'])
 def get_live_positions():
     """Polling endpoint for live driver positions"""
-    positions = live_engine.get_driver_screen_positions()
+    result = live_engine.get_driver_screen_positions()
+    
+    weather = None
+    if isinstance(result, tuple):
+        positions, weather = result
+    else:
+        positions = result
+    
+    response_data = {
+        'positions': positions,
+        'track_bounds': {
+            'x_min': live_engine.x_min,
+            'x_max': live_engine.x_max,
+            'y_min': live_engine.y_min,
+            'y_max': live_engine.y_max,
+        },
+        'mode': live_engine.mode,
+        'timestamp': datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    }
+    
+    if weather:
+        response_data['weather'] = weather
+    
+    if live_engine.mode == 'replay':
+        response_data['event_name'] = live_engine.replay_event_name
+    
     return jsonify({
         'success': True,
-        'data': {
-            'positions': positions,
-            'track_bounds': {
-                'x_min': live_engine.x_min,
-                'x_max': live_engine.x_max,
-                'y_min': live_engine.y_min,
-                'y_max': live_engine.y_max,
-            },
-            'timestamp': datetime.utcnow().isoformat()
-        }
+        'data': response_data
     })
+
+
+@app.route('/api/replay/start', methods=['POST'])
+def start_replay():
+    """Start replay from pre-computed JSON file. Instant - no FastF1 calls."""
+    data = request.json or {}
+    year = data.get('year', 2024)
+    round_num = data.get('round', 1)
+    speed = data.get('speed', 5.0)
+    
+    result = live_engine.start_replay(year, round_num, speed)
+    return jsonify(result)
+
+
+@app.route('/api/session/status', methods=['GET'])
+def get_session_status():
+    """Get current F1 session status (live/offline/upcoming)"""
+    try:
+        status = live_engine.get_session_status()
+        return jsonify({
+            'success': True,
+            'status': status
+        })
+    except Exception as e:
+        logger.error(f"Error getting session status: {e}")
+        return jsonify({
+            'success': False,
+            'status': 'offline',
+            'error': str(e)
+        })
 
 @app.route('/api/live/configure', methods=['POST'])
 def configure_canvas():
-    """
-    Configure canvas dimensions for coordinate transformation
-    POST body: {
-        "canvas_width": 1200,
-        "canvas_height": 800,
-        "left_margin": 340,
-        "right_margin": 260,
-        "circuit_rotation": 0.0
-    }
-    """
+    """Configure canvas dimensions for coordinate transformation"""
     data = request.json or {}
     
     live_engine.set_canvas_dimensions(
@@ -69,14 +120,8 @@ def configure_canvas():
         live_engine.set_circuit_rotation(data['circuit_rotation'])
     
     return jsonify({'success': True, 'message': 'Canvas configured'})
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-# Enable caching for faster subsequent requests
-fastf1.Cache.enable_cache('cache')
-
-app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)
+# === REMAINING CONSTANTS & FUNCTIONS ===
 
 # Team color mapping
 TEAM_COLORS = {
@@ -251,6 +296,8 @@ def get_race_results(round_num=None):
         url = f"https://api.jolpi.ca/ergast/f1/{get_current_season()}"
         if round_num:
             url += f"/{round_num}"
+        else:
+            url += "/last"
         url += "/results.json"
 
         response = requests.get(url, timeout=10)
@@ -788,6 +835,12 @@ def index():
     return send_from_directory('.', 'index.html')
 
 
+@app.route('/replay')
+def replay():
+    """Serve the race replay viewer"""
+    return send_from_directory('.', 'replay.html')
+
+
 @app.route('/api/dashboard')
 def get_dashboard_data():
     """Get all dashboard data in one call"""
@@ -918,6 +971,316 @@ def api_results(round_num):
 def api_next_race():
     """Get next race information"""
     return jsonify(get_next_race())
+
+
+# ========== RACE REPLAY ENDPOINTS ==========
+
+# Global cache for race telemetry data
+_race_telemetry_cache = {}
+
+def _get_last_race_session():
+    """Get the last completed race session from this season"""
+    try:
+        season = 2026
+        schedule = fastf1.get_event_schedule(season)
+        
+        now = datetime.now()
+        completed_races = []
+        
+        for _, event in schedule.iterrows():
+            round_num = int(event.get('RoundNumber', 0) or 0)
+            race_date = event.get('EventDate')
+            if hasattr(race_date, 'to_pydatetime'):
+                race_date = race_date.to_pydatetime()
+            
+            if race_date and race_date < now:
+                completed_races.append((race_date, round_num, event))
+        
+        if not completed_races:
+            return None, None, None
+        
+        # Get the most recent race
+        race_date, round_num, event = sorted(completed_races, key=lambda x: x[0])[-1]
+        
+        # Load race session
+        try:
+            session = fastf1.get_session(season, round_num, 'Race')
+            session.load(telemetry=True, weather=True)
+            return session, round_num, event
+        except:
+            # Try sprint as fallback
+            try:
+                session = fastf1.get_session(season, round_num, 'Sprint')
+                session.load(telemetry=True, weather=True)
+                return session, round_num, event
+            except:
+                return None, None, None
+    except Exception as e:
+        logger.error(f"Error getting last race session: {e}")
+        return None, None, None
+
+
+def _process_race_telemetry(session):
+    """Extract and process race telemetry data for all drivers"""
+    try:
+        FPS = 2
+        DT = 1 / FPS
+        
+        frames = []
+        drivers_data = {}
+        
+        if not session or session.laps.empty:
+            return None, None, None, None
+        
+        drivers = session.drivers
+        
+        # Get driver colors
+        try:
+            color_mapping = fastf1.plotting.get_driver_color_mapping(session)
+        except:
+            color_mapping = {}
+        
+        # Get example lap for track layout
+        example_lap = None
+        try:
+            quali_session = fastf1.get_session(session.event.get('Year'), 
+                                               session.event.get('RoundNumber'), 'Q')
+            quali_session.load(telemetry=True)
+            if not quali_session.laps.empty:
+                fastest = quali_session.laps.pick_fastest()
+                if fastest is not None:
+                    example_lap = fastest.get_telemetry()
+        except:
+            pass
+        
+        if example_lap is None:
+            fastest = session.laps.pick_fastest()
+            if fastest is not None:
+                example_lap = fastest.get_telemetry()
+        
+        # Build reference track line
+        track_line = None
+        if example_lap is not None and not example_lap.empty:
+            track_line = {
+                'x': example_lap['X'].values.tolist(),
+                'y': example_lap['Y'].values.tolist(),
+            }
+        
+        # Process each driver's telemetry
+        max_time = 0
+        for driver_no in drivers:
+            laps = session.laps.pick_drivers(driver_no)
+            if laps.empty:
+                continue
+            
+            driver_tel = []
+            for _, lap in laps.iterlaps():
+                tel = lap.get_telemetry()
+                if tel is not None and not tel.empty:
+                    for _, row in tel.iterrows():
+                        driver_tel.append({
+                            't': float(row['SessionTime'].total_seconds()) if hasattr(row['SessionTime'], 'total_seconds') else 0,
+                            'x': float(row['X']) if pd.notna(row['X']) else 0,
+                            'y': float(row['Y']) if pd.notna(row['Y']) else 0,
+                            'speed': float(row['Speed']) if pd.notna(row['Speed']) else 0,
+                            'drs': int(row['DRS']) if pd.notna(row['DRS']) else 0,
+                            'throttle': float(row['Throttle']) if pd.notna(row['Throttle']) else 0,
+                            'brake': float(row['Brake']) if pd.notna(row['Brake']) else 0,
+                        })
+            
+            if driver_tel:
+                driver_tel_sorted = sorted(driver_tel, key=lambda x: x['t'])
+                drivers_data[str(driver_no)] = {
+                    'number': driver_no,
+                    'telemetry': driver_tel_sorted,
+                }
+                max_time = max(max_time, driver_tel_sorted[-1]['t'])
+        
+        # Get driver info
+        driver_info = {}
+        for driver_no in drivers:
+            try:
+                driver = session.laps.pick_drivers(driver_no).iloc[0] if not session.laps.pick_drivers(driver_no).empty else None
+                if driver is not None:
+                    driver_info[str(driver_no)] = {
+                        'number': driver_no,
+                        'code': driver.get('Driver', ''),
+                        'color': color_mapping.get(driver_no, '#FFFFFF'),
+                    }
+            except:
+                driver_info[str(driver_no)] = {
+                    'number': driver_no,
+                    'code': f'P{driver_no}',
+                    'color': '#FFFFFF',
+                }
+        
+        return drivers_data, track_line, driver_info, max_time
+    
+    except Exception as e:
+        logger.error(f"Error processing race telemetry: {e}")
+        return None, None, None, None
+
+
+@app.route('/api/replay/last-race')
+def get_last_race_replay():
+    """Get the last completed race session for replay"""
+    try:
+        session, round_num, event = _get_last_race_session()
+        
+        if session is None:
+            return jsonify({
+                'success': False,
+                'message': 'No completed race found'
+            }), 404
+        
+        # Check cache first
+        cache_key = f"race_{round_num}"
+        if cache_key in _race_telemetry_cache:
+            data = _race_telemetry_cache[cache_key]
+            data['from_cache'] = True
+            return jsonify(data)
+        
+        drivers_data, track_line, driver_info, max_time = _process_race_telemetry(session)
+        
+        if drivers_data is None:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to process race telemetry'
+            }), 500
+        
+        result = {
+            'success': True,
+            'session': {
+                'year': session.event.get('Year'),
+                'round': round_num,
+                'name': session.event.get('EventName'),
+                'circuit': session.event.get('Location'),
+                'country': session.event.get('Country'),
+                'date': str(session.event.get('EventDate', '')),
+                'session_type': session.session_type,
+            },
+            'drivers': driver_info,
+            'track_line': track_line,
+            'max_time': max_time,
+            'fps': 2,
+            'from_cache': False,
+        }
+        
+        # Cache the result
+        _race_telemetry_cache[cache_key] = result
+        
+        return jsonify(result)
+    
+    except Exception as e:
+        logger.error(f"Error getting last race replay: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/replay/driver-telemetry/<driver_no>')
+def get_driver_telemetry(driver_no):
+    """Get telemetry for a specific driver at a given time"""
+    try:
+        session, round_num, event = _get_last_race_session()
+        
+        if session is None:
+            return jsonify({'success': False}), 404
+        
+        drivers_data, _, _, _ = _process_race_telemetry(session)
+        
+        if driver_no not in drivers_data:
+            return jsonify({'success': False}), 404
+        
+        return jsonify({
+            'success': True,
+            'driver_no': driver_no,
+            'telemetry': drivers_data[driver_no]['telemetry']
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting driver telemetry: {e}")
+        return jsonify({'success': False}), 500
+
+
+@app.route('/api/replay/frame-data')
+def get_frame_data():
+    """Get all driver positions for a specific time frame"""
+    try:
+        time = request.args.get('time', 0, type=float)
+        
+        session, round_num, event = _get_last_race_session()
+        
+        if session is None:
+            return jsonify({'success': False}), 404
+        
+        drivers_data, _, driver_info, _ = _process_race_telemetry(session)
+        
+        if drivers_data is None:
+            return jsonify({'success': False}), 500
+        
+        frame_positions = {}
+        for driver_no, data in drivers_data.items():
+            # Find telemetry closest to the requested time
+            tel = data['telemetry']
+            closest = None
+            min_diff = float('inf')
+            
+            for point in tel:
+                diff = abs(point['t'] - time)
+                if diff < min_diff:
+                    min_diff = diff
+                    closest = point
+            
+            if closest:
+                frame_positions[driver_no] = closest
+        
+        return jsonify({
+            'success': True,
+            'time': time,
+            'positions': frame_positions,
+            'drivers': driver_info
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting frame data: {e}")
+        return jsonify({'success': False}), 500
+
+
+@app.route('/api/replay/available-sessions')
+def get_available_sessions():
+    """Get list of available recorded sessions"""
+    try:
+        season = 2026
+        schedule = fastf1.get_event_schedule(season)
+        
+        sessions = []
+        now = datetime.now()
+        
+        for _, event in schedule.iterrows():
+            round_num = int(event.get('RoundNumber', 0) or 0)
+            race_date = event.get('EventDate')
+            if hasattr(race_date, 'to_pydatetime'):
+                race_date = race_date.to_pydatetime()
+            
+            # Only show completed races
+            if race_date and race_date < now:
+                sessions.append({
+                    'round': round_num,
+                    'name': event.get('EventName'),
+                    'circuit': event.get('Location'),
+                    'date': str(race_date.strftime('%Y-%m-%d')) if race_date else '',
+                })
+        
+        return jsonify({
+            'success': True,
+            'sessions': sorted(sessions, key=lambda x: x['round'], reverse=True)
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting available sessions: {e}")
+        return jsonify({'success': False}), 500
 
 
 if __name__ == '__main__':
